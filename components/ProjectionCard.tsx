@@ -14,6 +14,8 @@ interface ProjectionCardProps {
   setCurrentSavings: (savings: number) => void;
   retirementAge: number;
   setRetirementAge: (age: number) => void;
+  savingsReturnRate: number;
+  setSavingsReturnRate: (rate: number) => void;
   projectionData: ProjectionData;
 }
 
@@ -25,7 +27,7 @@ const Stat: React.FC<{ label: string; value: string | number; className?: string
 );
 
 export const ProjectionCard: React.FC<ProjectionCardProps> = ({
-  p1Age, setP1Age, p2Age, setP2Age, currentSavings, setCurrentSavings, retirementAge, setRetirementAge, projectionData
+  p1Age, setP1Age, p2Age, setP2Age, currentSavings, setCurrentSavings, retirementAge, setRetirementAge, savingsReturnRate, setSavingsReturnRate, projectionData
 }) => {
 
   const handleAgeChange = (setter: (val: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,6 +43,11 @@ export const ProjectionCard: React.FC<ProjectionCardProps> = ({
   const handleRetirementAgeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     setRetirementAge(isNaN(val) ? 0 : val);
+  };
+  
+  const handleReturnRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setSavingsReturnRate(isNaN(val) ? 0 : val);
   };
 
   const maxAge = Math.max(p1Age, p2Age);
@@ -66,6 +73,21 @@ export const ProjectionCard: React.FC<ProjectionCardProps> = ({
             <ExpenseInput label="Partner 2 Age" value={p2Age} onChange={handleAgeChange(setP2Age)} prefix="" />
             <div className="md:col-span-2">
                 <ExpenseInput label="Current Combined Savings" value={currentSavings} onChange={handleSavingsChange} />
+            </div>
+             <div className="md:col-span-2">
+                <label htmlFor="savingsReturnRate" className="block text-sm font-medium text-slate-600 mb-2">
+                    Annual Savings Return (%): <span className="font-bold text-brand-primary">{savingsReturnRate}</span>
+                </label>
+                <input
+                    id="savingsReturnRate"
+                    type="range"
+                    min="0"
+                    max="15"
+                    step="0.5"
+                    value={savingsReturnRate}
+                    onChange={handleReturnRateChange}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-primary"
+                />
             </div>
         </div>
 

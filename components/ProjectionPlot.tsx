@@ -47,8 +47,8 @@ export const ProjectionPlot: React.FC<ProjectionPlotProps> = ({ data, retirement
                 type: 'line',
                 label: 'Retirement',
                 data: [
-                    { x: retirementAge, y: 0 },
-                    { x: retirementAge, y: maxSavings * 1.05 },
+                    { x: retirementAge, y: Math.min(...data.map(d => d.savings)) },
+                    { x: retirementAge, y: Math.max(...data.map(d => d.savings)) },
                 ],
                 borderColor: '#10b981',
                 borderWidth: 2,
@@ -62,7 +62,6 @@ export const ProjectionPlot: React.FC<ProjectionPlotProps> = ({ data, retirement
             maintainAspectRatio: false,
             scales: {
                 y: {
-                    beginAtZero: true,
                     ticks: {
                         callback: function(value: string | number) {
                             if (typeof value === 'number') {

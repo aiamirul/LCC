@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [partner2Age, setPartner2Age] = useState<number>(32);
   const [currentSavings, setCurrentSavings] = useState<number>(50000);
   const [retirementAge, setRetirementAge] = useState<number>(65);
+  const [savingsReturnRate, setSavingsReturnRate] = useState<number>(5);
 
 
   // Preset state, initialized with defaults
@@ -93,11 +94,12 @@ const App: React.FC = () => {
 
       const savedProjection = localStorage.getItem('projectionState');
       if (savedProjection) {
-        const { p1Age, p2Age, savings, retireAge } = JSON.parse(savedProjection);
+        const { p1Age, p2Age, savings, retireAge, returnRate } = JSON.parse(savedProjection);
         setPartner1Age(p1Age || 30);
         setPartner2Age(p2Age || 32);
         setCurrentSavings(savings || 50000);
         setRetirementAge(retireAge || 65);
+        setSavingsReturnRate(returnRate ?? 5);
       }
 
     } catch (error) {
@@ -112,9 +114,10 @@ const App: React.FC = () => {
       p2Age: partner2Age,
       savings: currentSavings,
       retireAge: retirementAge,
+      returnRate: savingsReturnRate,
     };
     localStorage.setItem('projectionState', JSON.stringify(projectionState));
-  }, [partner1Age, partner2Age, currentSavings, retirementAge]);
+  }, [partner1Age, partner2Age, currentSavings, retirementAge, savingsReturnRate]);
 
 
   // Save custom presets to localStorage whenever they change
@@ -238,52 +241,45 @@ const App: React.FC = () => {
 
 
   const projectionData = useMemo<ProjectionData>(() => {
-    const maxCurrentAge = Math.max(partner1Age, partner2Age, 1); // Avoid age 0
+    const maxCurrentAge = Math.max(partner1Age, partner2Age, 1);
     const yearsToRetirement = Math.max(0, retirementAge - maxCurrentAge);
+    const returnFactor = 1 + (savingsReturnRate / 100);
 
-    let currentYearSavings = currentSavings;
-    const plotData: PlotPoint[] = [{ age: maxCurrentAge, savings: currentYearSavings }];
-    
-    // Accumulate savings until retirement
+    let yearlySavings = currentSavings;
+    const plotData: PlotPoint[] = [{ age: maxCurrentAge, savings: yearlySavings }];
+
+    // Phase 1: Accumulate until retirement
     for (let i = 1; i <= yearsToRetirement; i++) {
-        currentYearSavings += netIncome * 12;
-        plotData.push({ age: maxCurrentAge + i, savings: Math.max(0, currentYearSavings) });
+      yearlySavings = (yearlySavings * returnFactor) + (netIncome * 12);
+      plotData.push({ age: maxCurrentAge + i, savings: yearlySavings });
     }
-    
-    const savingsAtRetirement = Math.max(0, currentYearSavings);
 
-    // Deplete savings after retirement
-    let yearsOfSavingsPostRetirement = 0;
-    let ageAtBankruptcy: number | null = null;
+    const savingsAtRetirement = yearlySavings;
+
+    // Phase 2: Deplete after retirement
     const postRetirementExpenses = totalExpenses * 12;
-
-    if (postRetirementExpenses <= 0) { // If expenses are negative or zero, savings grow forever
-        yearsOfSavingsPostRetirement = Infinity;
-        ageAtBankruptcy = null;
-        for (let i = 1; i <= (100 - retirementAge); i++) {
-            currentYearSavings -= postRetirementExpenses; // expenses are negative/zero, so this adds/maintains money
-            plotData.push({ age: retirementAge + i, savings: currentYearSavings });
-        }
-    } else if (savingsAtRetirement > 0) {
-        yearsOfSavingsPostRetirement = savingsAtRetirement / postRetirementExpenses;
-        ageAtBankruptcy = retirementAge + yearsOfSavingsPostRetirement;
-
-        let remainingSavings = savingsAtRetirement;
-        for (let age = retirementAge + 1; age <= 100; age++) {
-            remainingSavings -= postRetirementExpenses;
-            plotData.push({ age, savings: Math.max(0, remainingSavings) });
-            if (remainingSavings <= 0) break;
-        }
-    } else { // No savings at retirement
-        ageAtBankruptcy = retirementAge;
+    for (let age = retirementAge + 1; age <= 100; age++) {
+      yearlySavings = (yearlySavings * returnFactor) - postRetirementExpenses;
+      plotData.push({ age, savings: yearlySavings });
     }
-    
-    const lastPlotPoint = plotData[plotData.length - 1];
-    if (lastPlotPoint && lastPlotPoint.age < 100) {
-        for (let age = lastPlotPoint.age + 1; age <= 100; age++) {
-            plotData.push({ age, savings: 0 });
+
+    // Calculate bankruptcy age more accurately for the stat
+    let tempSavings = savingsAtRetirement;
+    let yearsPostRetirement = 0;
+    if (tempSavings > 0) {
+      // If expenses are less than returns on savings, savings will grow.
+      if (postRetirementExpenses <= tempSavings * (returnFactor - 1)) {
+        yearsPostRetirement = Infinity;
+      } else {
+        while (tempSavings > 0 && yearsPostRetirement < 150) { // Cap at 150 years
+          tempSavings = (tempSavings * returnFactor) - postRetirementExpenses;
+          yearsPostRetirement++;
         }
+      }
     }
+
+    const ageAtBankruptcy = (yearsPostRetirement === Infinity || yearsPostRetirement >= 150) ? null : retirementAge + yearsPostRetirement;
+    const yearsOfSavingsPostRetirement = (ageAtBankruptcy === null) ? Infinity : ageAtBankruptcy - retirementAge;
 
     let commentary;
     if (netIncome < 0 && savingsAtRetirement <= 0) {
@@ -291,11 +287,11 @@ const App: React.FC = () => {
     } else if (ageAtBankruptcy === null) {
         commentary = { title: "Financial Immortality Unlocked", message: "Your money will outlive you, your children, and possibly civilization itself. Well done.", colorClass: 'bg-green-100 border-green-500 text-green-700'};
     } else if (ageAtBankruptcy > 85) {
-        commentary = { title: "The Golden Years are... Golden!", message: "You're set for a long and comfortable retirement. Your planning is solid.", colorClass: 'bg-green-100 border-green-500 text-green-700'};
-    } else if (ageAtBankruptcy > retirementAge + 5) {
+        commentary = { title: "The Golden Years are... Golden!", message: `You're set for a long retirement, with savings lasting until age ${Math.floor(ageAtBankruptcy)}. Your planning is solid.`, colorClass: 'bg-green-100 border-green-500 text-green-700'};
+    } else if (ageAtBankruptcy > retirementAge) {
         commentary = { title: "A Comfortable Cushion", message: `You've got a runway post-retirement, but at age ${Math.floor(ageAtBankruptcy)}, the party's over. No sudden super-yacht purchases.`, colorClass: 'bg-yellow-100 border-yellow-500 text-yellow-700'};
     } else {
-        commentary = { title: "Dangerously Short Runway", message: `You'll run out of money just ${yearsOfSavingsPostRetirement.toFixed(1)} years into retirement. Time to rethink... everything.`, colorClass: 'bg-red-100 border-red-500 text-red-700'};
+        commentary = { title: "Dangerously Short Runway", message: `You'll have no savings for retirement. Time to rethink... everything.`, colorClass: 'bg-red-100 border-red-500 text-red-700'};
     }
     
     return {
@@ -305,7 +301,7 @@ const App: React.FC = () => {
         ageAtBankruptcy: ageAtBankruptcy ? Math.floor(ageAtBankruptcy) : null,
         commentary,
     };
-  }, [netIncome, totalExpenses, currentSavings, retirementAge, partner1Age, partner2Age]);
+  }, [netIncome, totalExpenses, currentSavings, retirementAge, partner1Age, partner2Age, savingsReturnRate]);
 
   return (
     <div className="min-h-screen bg-brand-light font-sans">
@@ -360,6 +356,7 @@ const App: React.FC = () => {
               p2Age={partner2Age} setP2Age={setPartner2Age}
               currentSavings={currentSavings} setCurrentSavings={setCurrentSavings}
               retirementAge={retirementAge} setRetirementAge={setRetirementAge}
+              savingsReturnRate={savingsReturnRate} setSavingsReturnRate={setSavingsReturnRate}
               projectionData={projectionData}
             />
           </div>
